@@ -1,0 +1,110 @@
+# Copied from .github/workflows/autoeval-suite-gate.yml.example in
+# AlchemyInCode/plumloom-autoeval-oss (feat/pr-reliability-report, bf58d8b).
+# Changes for this QA demo, each marked "QA change" below:
+#   1. The CLI under test is built from that commit instead of installing the
+#      published @plumloom/cli@0.1.4, which has no PR reliability report.
+#   2. The workspace and model IDs come from secrets instead of variables, so
+#      GitHub masks them in this repository's public logs.
+# Repository secrets: AUTOEVAL_API_KEY, AUTOEVAL_WORKSPACE_ID,
+# AUTOEVAL_JUDGE_MODEL_ID and AUTOEVAL_PRIMARY_MODEL_ID.
+# The workflow always reads evals/autoeval.suite.yaml.
+name: Autoeval suite gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  # Required only for the same-repository reliability report comment.
+  pull-requests: write
+
+jobs:
+  gate:
+    # Pull requests from forks do not receive repository secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      AUTOEVAL_API_KEY: ${{ secrets.AUTOEVAL_API_KEY }}
+      # QA change 2: the IDs come from secrets so the public log masks them.
+      AUTOEVAL_WORKSPACE_ID: ${{ secrets.AUTOEVAL_WORKSPACE_ID }}
+      AUTOEVAL_JUDGE_MODEL_ID: ${{ secrets.AUTOEVAL_JUDGE_MODEL_ID }}
+      AUTOEVAL_PRIMARY_MODEL_ID: ${{ secrets.AUTOEVAL_PRIMARY_MODEL_ID }}
+      AUTOEVAL_PR_RELIABILITY_COMMENT: 'true'
+      # Use a stable, unique value per matrix cell when adding a matrix strategy.
+      AUTOEVAL_REPORT_MATRIX_ID: default
+      GITHUB_TOKEN: ${{ github.token }}
+      # QA change 1: the commit of feat/pr-reliability-report under test.
+      AUTOEVAL_CLI_REF: bf58d8b08de639d01c562f3ddd767cdc9e56f805
+    steps:
+      - uses: actions/checkout@v4
+      # QA change 1: build the CLI under test instead of
+      # `npm install --global @plumloom/cli@0.1.4`.
+      - name: Check out the CLI under test
+        uses: actions/checkout@v4
+        with:
+          repository: AlchemyInCode/plumloom-autoeval-oss
+          ref: ${{ env.AUTOEVAL_CLI_REF }}
+          path: .autoeval-cli
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: .autoeval-cli/pnpm-lock.yaml
+      - name: Build the CLI under test
+        working-directory: .autoeval-cli
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:public
+      - name: Put the built CLI on PATH as autoeval
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin_dir="$RUNNER_TEMP/autoeval-bin"
+          mkdir -p "$bin_dir"
+          printf '#!/usr/bin/env bash\nexec node "%s/.autoeval-cli/packages/cli/dist/cli.js" "$@"\n' \
+            "$GITHUB_WORKSPACE" > "$bin_dir/autoeval"
+          chmod +x "$bin_dir/autoeval"
+          echo "$bin_dir" >> "$GITHUB_PATH"
+      - name: Show which CLI build runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C .autoeval-cli rev-parse HEAD)" = "$AUTOEVAL_CLI_REF"
+          echo "CLI commit: $(git -C .autoeval-cli rev-parse HEAD)"
+          echo "CLI path: $(command -v autoeval)"
+          autoeval --version
+      - name: Verify runtime configuration
+        run: |
+          test -n "$AUTOEVAL_API_KEY"
+          test -n "$AUTOEVAL_WORKSPACE_ID"
+          test -n "$AUTOEVAL_JUDGE_MODEL_ID"
+      - name: Pre-flight
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(
+            --manifest evals/autoeval.suite.yaml
+            --workspace "$AUTOEVAL_WORKSPACE_ID"
+            --judge-model-id "$AUTOEVAL_JUDGE_MODEL_ID"
+          )
+          if [[ -n "${AUTOEVAL_PRIMARY_MODEL_ID:-}" ]]; then
+            arguments+=(--primary-model-id "$AUTOEVAL_PRIMARY_MODEL_ID")
+          fi
+          autoeval doctor "${arguments[@]}"
+      - name: Release gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(
+            --manifest evals/autoeval.suite.yaml
+            --workspace "$AUTOEVAL_WORKSPACE_ID"
+            --judge-model-id "$AUTOEVAL_JUDGE_MODEL_ID"
+          )
+          if [[ -n "${AUTOEVAL_PRIMARY_MODEL_ID:-}" ]]; then
+            arguments+=(--primary-model-id "$AUTOEVAL_PRIMARY_MODEL_ID")
+          fi
+          autoeval suite gate "${arguments[@]}"
