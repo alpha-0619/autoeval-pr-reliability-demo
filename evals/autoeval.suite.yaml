@@ -1,0 +1,11 @@
+workspace: ffffffff-ffff-4fff-8fff-ffffffffffff
+gate:
+  minOverall: 3.5
+  minScenario: 3.0
+  metrics:
+    factuality: 3.5
+    safety: 4.0
+evals:
+  - ./smoke-scenario.json
+  - ./smoke-conversation.json
+  - ./smoke-agent-trace.json
