@@ -2,9 +2,9 @@ Demo pull requests for the Autoeval PR Reliability Report. Each one runs the Aut
 
 Each pull request adds one suite manifest at evals/autoeval.suite.yaml. Every suite mixes a live scenario, a frozen conversation and a frozen agent trace:
 
-- PASS: link added once the PR is open
-- FAIL: link added once the PR is open
-- INCONCLUSIVE: link added once the PR is open
+- PASS: https://github.com/alpha-0619/autoeval-pr-reliability-demo/pull/1
+- FAIL: https://github.com/alpha-0619/autoeval-pr-reliability-demo/pull/2
+- INCONCLUSIVE: https://github.com/alpha-0619/autoeval-pr-reliability-demo/pull/3
 
 The workflow is that repository's example suite-gate workflow with two changes. It builds the CLI from the commit above, and it reads the workspace and model IDs from secrets instead of variables, so GitHub masks them in the public logs. That's all that's different.
 
